@@ -6,9 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Bhavyyadav25/go-indexer/internal/tokenizer"
-	redis "github.com/redis/go-redis"
+	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -23,50 +24,25 @@ func NewRedisClient() *redis.Client {
 }
 
 func CreateIndex(client *redis.Client) error {
-	schema := &redis.IndexSchema{
-		Name: "content",
-		Type: redis.TextField,
-		Options: &redis.TextFieldOptions{
-			Weight:   5.0,
-			Sortable: false,
-		},
-	}
-	pathField := &redis.IndexSchema{
-		Name: "path",
-		Type: redis.TextField,
-		Options: &redis.TextFieldOptions{
-			Sortable: true,
-		},
-	}
-	sizeField := &redis.IndexSchema{
-		Name: "size",
-		Type: redis.NumericField,
-		Options: &redis.NumericFieldOptions{
-			Sortable: true,
-		},
-	}
-	tsField := &redis.IndexSchema{
-		Name: "timestamp",
-		Type: redis.NumericField,
-		Options: &redis.NumericFieldOptions{
-			Sortable: true,
-		},
+	// Check if index exists
+	_, err := client.Do(ctx, "FT.INFO", indexName).Result()
+	if err == nil {
+		return nil // Index already exists
 	}
 
-	res, err := client.Do(ctx, "FT.INFO", indexName).Result()
-	if err != nil || res == nil {
-		_, err := client.Do(ctx, "FT.CREATE", indexName,
-			"ON", "HASH",
-			"PREFIX", 1, "doc:",
-			"SCHEMA",
-			pathField.Name, pathField.Type, "SORTABLE",
-			sizeField.Name, sizeField.Type, "SORTABLE",
-			tsField.Name, tsField.Type, "SORTABLE",
-			schema.Name, "TEXT", schema.Options,
-		).Result()
-		return err
-	}
-	return nil
+	// Create index with proper command arguments
+	_, err = client.Do(ctx,
+		"FT.CREATE", indexName,
+		"ON", "HASH",
+		"PREFIX", "1", "doc:",
+		"SCHEMA",
+		"path", "TEXT", "SORTABLE",
+		"size", "NUMERIC", "SORTABLE",
+		"timestamp", "NUMERIC", "SORTABLE",
+		"content", "TEXT", "WEIGHT", "5.0",
+	).Result()
+
+	return err
 }
 
 func IndexFile(client *redis.Client, path string) error {
@@ -87,7 +63,7 @@ func IndexFile(client *redis.Client, path string) error {
 		"timestamp": info.ModTime().Unix(),
 	}
 
-	key := fmt.Sprintf("doc:%s", filepath.Base(path))
+	key := fmt.Sprintf("doc:%s:%d", filepath.Base(path), time.Now().UnixNano())
 	return client.HSet(ctx, key, doc).Err()
 }
 

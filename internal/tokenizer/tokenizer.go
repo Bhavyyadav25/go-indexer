@@ -6,16 +6,21 @@ import (
 	"strings"
 
 	"github.com/kljensen/snowball"
-	stopwords "github.com/zoomio/stopwords"
+	"github.com/zoomio/stopwords"
 )
 
-var validExts = map[string]bool{
-	".txt":  true,
-	".md":   true,
-	".go":   true,
-	".html": true,
-	".log":  true,
-}
+var (
+	validExts = map[string]bool{
+		".txt":  true,
+		".md":   true,
+		".go":   true,
+		".html": true,
+		".log":  true,
+	}
+
+	// Initialize stopwords registry with default configuration
+	stopWordsReg = stopwords.Setup()
+)
 
 func IsTextFile(path string) bool {
 	return validExts[filepath.Ext(path)]
@@ -42,7 +47,7 @@ func processTokens(tokens []string) []string {
 	var result []string
 	for _, token := range tokens {
 		token = strings.ToLower(token)
-		if stopwords.IsStopWord(token) {
+		if stopWordsReg.IsStopWord(token) { // Now using properly initialized registry
 			continue
 		}
 		stemmed, err := snowball.Stem(token, "english", true)
